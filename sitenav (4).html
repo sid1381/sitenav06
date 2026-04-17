@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BNT327-06 SiteNav Builder</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8; --surface: #ffffff; --border: #d1d5db;
+    --text: #1f2937; --muted: #6b7280; --accent: #1e40af;
+    --accent-light: #dbeafe; --success: #059669; --success-bg: #d1fae5;
+    --warn: #d97706; --warn-bg: #fef3c7; --error: #dc2626; --error-bg: #fee2e2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.875rem; margin-bottom: 24px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 12px; }
+  .upload-zone { border: 2px dashed var(--border); border-radius: 6px; padding: 24px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: var(--accent-light); }
+  .upload-zone.loaded { border-color: var(--success); border-style: solid; background: var(--success-bg); }
+  .upload-zone input { display: none; }
+  .upload-zone .label { font-weight: 600; font-size: 0.9rem; }
+  .upload-zone .hint { color: var(--muted); font-size: 0.8rem; margin-top: 4px; }
+  .upload-zone .file-info { color: var(--success); font-size: 0.85rem; font-weight: 500; margin-top: 6px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+  button.primary { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: white; border: none; border-radius: 6px; padding: 10px 24px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+  button.primary:hover { opacity: 0.9; }
+  button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  #status { font-size: 0.85rem; color: var(--muted); }
+  #validation { margin-top: 16px; display: none; }
+  #validation .v-item { padding: 8px 12px; border-radius: 4px; font-size: 0.8rem; margin-bottom: 6px; font-family: 'SF Mono', 'Consolas', monospace; }
+  .v-info { background: var(--accent-light); color: var(--accent); }
+  .v-warn { background: var(--warn-bg); color: var(--warn); }
+  .v-error { background: var(--error-bg); color: var(--error); }
+  .v-ok { background: var(--success-bg); color: var(--success); }
+  .settings { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .settings label { font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+  .settings input[type="number"] { width: 48px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.8rem; }
+  .settings select { padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>BNT327-06 SiteNav Builder</h1>
+  <p class="subtitle">Pre-Activation Monitoring Report Generator &mdash; v1.1</p>
+
+  <div class="card">
+    <h2>1. Upload Source Files</h2>
+    <div class="grid-2">
+      <div class="upload-zone" id="dropSSU" onclick="document.getElementById('fileSSU').click()">
+        <input type="file" id="fileSSU" accept=".xlsx,.xls" onchange="handleFile(this,'ssu')">
+        <div class="label">SSU Horizon Report</div>
+        <div class="hint">Primary source &mdash; required</div>
+        <div class="file-info" id="infoSSU"></div>
+      </div>
+      <div class="upload-zone" id="dropReact" onclick="document.getElementById('fileReact').click()">
+        <input type="file" id="fileReact" accept=".xlsx,.xls" onchange="handleFile(this,'react')">
+        <div class="label">Re-activation Tracker</div>
+        <div class="hint">Site type &amp; status &mdash; optional</div>
+        <div class="file-info" id="infoReact"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. Settings</h2>
+    <div class="settings">
+      <label>Watch Zone (weeks): <input type="number" id="watchWeeks" value="2" min="1" max="52"></label>
+      <label>Filter:
+        <select id="filterMode">
+          <option value="preact">Pre-activation only</option>
+          <option value="all">All sites</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Build</h2>
+    <div class="actions">
+      <button class="primary" id="btnBuild" onclick="buildReport()" disabled>Build SiteNav Report</button>
+      <span id="status"></span>
+    </div>
+    <div id="validation"></div>
+  </div>
+</div>
+
+<script>
+/* ─── State ─── */
+const STATE = { ssu: null, react: null, ssuName: '', reactName: '' };
+
+/* ─── Constants ─── */
+const REGION_MAP = {
+  'Argentina':'LATAM','Australia':'APAC','Belgium':'EU','Brazil':'LATAM',
+  'Chile':'LATAM','China':'APAC','France':'EU','Georgia':'EMEA',
+  'Germany':'EU','India':'APAC','Italy':'EU','Japan':'APAC',
+  'Korea, Republic of':'APAC','South Korea':'APAC','Poland':'EU',
+  'Romania':'EU','Spain':'EU','Switzerland':'EMEA','Thailand':'APAC',
+  'Turkey':'EMEA','Bulgaria':'EU','Hungary':'EU','United Kingdom':'EMEA',
+  'United States':'US','Serbia':'EU','Czech Republic':'EU',
+};
+
+/* ─── Style Constants (extracted from V5 example file) ─── */
+const TEAL = 'FF005A64';
+const STYLES = {
+  headerFill:      { type: 'pattern', pattern: 'solid', fgColor: { argb: TEAL } },
+  headerFont:      { name: 'Gill Sans MT', bold: true, size: 11, color: { argb: 'FFFFFFFF' } },
+  headerFontSmall: { name: 'Gill Sans MT', bold: true, size: 10, color: { argb: 'FFFFFFFF' } },
+  titleFont:       { name: 'Gill Sans MT', bold: true, size: 16, color: { argb: 'FFFFFFFF' } },
+  subtitleFont:    { name: 'Gill Sans MT', size: 11, color: { argb: 'FF000000' } },
+  dataFont:        { name: 'Gill Sans MT', size: 10 },
+  complete: {
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD5F0D5' } },
+    font: { name: 'Gill Sans MT', size: 10, color: { argb: 'FF006100' } },
+  },
+  onTrack: {
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD5F0D5' } },
+    font: { name: 'Gill Sans MT', size: 10, color: { argb: 'FF006100' } },
+  },
+  actionZone: {
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFCCCC' } },
+    font: { name: 'Gill Sans MT', size: 10, color: { argb: 'FFC00000' } },
+  },
+  watchZone: {
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEB9C' } },
+    font: { name: 'Gill Sans MT', size: 10, color: { argb: 'FF9C5700' } },
+  },
+  tbd: {
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } },
+    font: { name: 'Gill Sans MT', size: 10, color: { argb: 'FF808080' } },
+  },
+  border: {
+    top:    { style: 'thin', color: { argb: 'FFD1D5DB' } },
+    bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+    left:   { style: 'thin', color: { argb: 'FFD1D5DB' } },
+    right:  { style: 'thin', color: { argb: 'FFD1D5DB' } },
+  },
+};
+
+/* ─── File Handling ─── */
+function handleFile(input, key) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      STATE[key] = wb;
+      STATE[key + 'Name'] = file.name;
+      const zone = document.getElementById(key === 'ssu' ? 'dropSSU' : 'dropReact');
+      const info = document.getElementById(key === 'ssu' ? 'infoSSU' : 'infoReact');
+      zone.classList.add('loaded');
+      info.textContent = `✓ ${file.name}`;
+      updateBuildBtn();
+    } catch (err) { alert('Error reading file: ' + err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+['dropSSU','dropReact'].forEach(id => {
+  const el = document.getElementById(id);
+  const key = id === 'dropSSU' ? 'ssu' : 'react';
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
+  el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) { const inp = el.querySelector('input'); const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; handleFile(inp, key); }
+  });
+});
+
+function updateBuildBtn() { document.getElementById('btnBuild').disabled = !STATE.ssu; }
+
+/* ─── Utilities ─── */
+function toDate(v) {
+  if (!v) return null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (typeof v === 'number') { const d = new Date((v - 25569) * 86400000); return isNaN(d.getTime()) ? null : d; }
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (!s || /^(n\/?a|tbd|-)$/i.test(s)) return null;
+    if (s.includes('-->') || s.includes('->')) { const parts = s.split(/--?>/).map(p => p.trim()); return toDate(parts[parts.length - 1]); }
+    const am = s.match(/actual[:\s]+(.+)/i);
+    if (am) return toDate(am[1]);
+    const d = new Date(s);
+    if (!isNaN(d.getTime()) && d.getFullYear() > 2000) return d;
+    const m2 = s.match(/(\d{1,2})\s*([A-Za-z]{3})\s*(\d{2,4})/);
+    if (m2) { const yr = m2[3].length === 2 ? '20' + m2[3] : m2[3]; const d2 = new Date(`${m2[2]} ${m2[1]}, ${yr}`); if (!isNaN(d2.getTime())) return d2; }
+    return null;
+  }
+  return null;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  const mmm = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+  return `${d.getDate()}-${mmm}-${String(d.getFullYear()).slice(-2)}`;
+}
+
+function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
+
+/* ─── Parse SSU Horizon ─── */
+function parseSSU(wb) {
+  let sheetName = wb.SheetNames[0];
+  for (const sn of wb.SheetNames) { if (/bnt327|4781/i.test(sn)) { sheetName = sn; break; } }
+  const ws = wb.Sheets[sheetName];
+  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: false, dateNF: 'yyyy-mm-dd' });
+
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(5, raw.length); i++) {
+    if ((raw[i]||[]).some(c => /^site\s*no$/i.test(String(c||'').trim()))) { headerIdx = i; break; }
+  }
+  const headers = (raw[headerIdx]||[]).map(h => String(h||'').trim());
+  const colMap = {};
+  const P = {
+    ICON_STUDY_ID: /^icon\s*study\s*id$/i, PROTOCOL_ID: /^protocol\s*id$/i,
+    SITE_NO: /^site\s*no$/i, COUNTRY: /^country$/i, PI: /^pi\s*name$/i,
+    INSTITUTION: /^institution$/i, HORIZON_STATUS: /site.*horizon\s*status/i,
+    ACTIVATE_STATUS: /site.*activate\s*status/i, DATE_SELECTED: /^date\s*selected$/i,
+    COUNTRY_IRB_SUB_P: /country\s+irb.*submission.*planned/i, COUNTRY_IRB_SUB_A: /country\s+irb.*submission.*actual/i,
+    COUNTRY_IRB_APPR_P: /country\s+irb.*approval.*planned/i, COUNTRY_IRB_APPR_A: /country\s+irb.*approval.*actual/i,
+    SITE_IRB_SUB_P: /site\s+irb.*submission.*planned/i, SITE_IRB_SUB_A: /site\s+irb.*submission.*actual/i,
+    SITE_IRB_APPR_P: /site\s+irb.*approval.*planned/i, SITE_IRB_APPR_A: /site\s+irb.*approval.*actual/i,
+    CONTRACT_P: /contract\s*planned/i, CONTRACT_A: /contract\s*actual/i,
+    SIV_SCHED: /siv\s*scheduled/i, SIV_A: /siv\s*actual/i,
+    PAD: /planned\s*site\s*activation/i, AAD: /actual\s*site\s*activation/i,
+    REACT_BL: /re-?activation.*baseline/i,
+    REACT_P: /re-?activation\s*planned\s*date(?!.*baseline)/i, REACT_A: /re-?activation\s*actual/i,
+    FSA_GUIDANCE: /fsa\s*pm\s*guidance|sal\s*activation/i,
+    FSA_COMMENT: /fsa\s*pm\s*comment|sal\s*ssu\s*comment/i,
+  };
+  headers.forEach((h, i) => { for (const [k, pat] of Object.entries(P)) { if (!colMap[k] && pat.test(h)) { colMap[k] = i; break; } } });
+
+  const sites = [];
+  for (let r = headerIdx + 1; r < raw.length; r++) {
+    const row = raw[r]||[];
+    const siteNo = String(row[colMap.SITE_NO]||'').trim();
+    if (!siteNo) continue;
+    sites.push({
+      siteNo, country: String(row[colMap.COUNTRY]||'').trim(),
+      institution: String(row[colMap.INSTITUTION]||'').trim(),
+      iconStudyId: String(row[colMap.ICON_STUDY_ID]||'').trim(),
+      protocolId: String(row[colMap.PROTOCOL_ID]||'').trim(),
+      pi: String(row[colMap.PI]||'').trim(),
+      horizonStatus: String(row[colMap.HORIZON_STATUS]||'').trim(),
+      activateStatus: String(row[colMap.ACTIVATE_STATUS]||'').trim(),
+      dateSelected: row[colMap.DATE_SELECTED],
+      siteIrbSubP: row[colMap.SITE_IRB_SUB_P], siteIrbSubA: row[colMap.SITE_IRB_SUB_A],
+      siteIrbApprP: row[colMap.SITE_IRB_APPR_P], siteIrbApprA: row[colMap.SITE_IRB_APPR_A],
+      countryIrbSubP: row[colMap.COUNTRY_IRB_SUB_P], countryIrbSubA: row[colMap.COUNTRY_IRB_SUB_A],
+      countryIrbApprP: row[colMap.COUNTRY_IRB_APPR_P], countryIrbApprA: row[colMap.COUNTRY_IRB_APPR_A],
+      contractP: row[colMap.CONTRACT_P], contractA: row[colMap.CONTRACT_A],
+      sivSched: row[colMap.SIV_SCHED], sivA: row[colMap.SIV_A],
+      pad: row[colMap.PAD], aad: row[colMap.AAD],
+      reactBL: row[colMap.REACT_BL], reactP: row[colMap.REACT_P], reactA: row[colMap.REACT_A],
+      fsaGuidance: String(row[colMap.FSA_GUIDANCE]||'').trim(),
+      fsaComment: String(row[colMap.FSA_COMMENT]||'').trim(),
+    });
+  }
+  return { sites, colMap, sheetName, rawHeaders: headers, rawData: raw.slice(headerIdx + 1).filter(r => r && r[colMap.SITE_NO]) };
+}
+
+/* ─── Parse Re-activation Tracker ─── */
+function parseReact(wb) {
+  // Prefer the protocol-specific BNT327-06 sheet (the main tracker sheet).
+  // Fall back to a "reactivation tracker" named sheet, then the first sheet.
+  let sheetName = null;
+  for (const sn of wb.SheetNames) { if (/bnt.?327|4781/i.test(sn)) { sheetName = sn; break; } }
+  if (!sheetName) {
+    for (const sn of wb.SheetNames) { if (/reactivation|re-activation/i.test(sn) && /tracker/i.test(sn)) { sheetName = sn; break; } }
+  }
+  if (!sheetName) sheetName = wb.SheetNames[0];
+
+  const ws = wb.Sheets[sheetName];
+  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: false });
+
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(5, raw.length); i++) {
+    if ((raw[i]||[]).some(c => /study site|site no/i.test(String(c||'')))) { headerIdx = i; break; }
+  }
+  const headers = (raw[headerIdx]||[]).map(h => String(h||'').trim());
+
+  let colSite = -1, colAR = -1, colActDate = -1;
+  headers.forEach((h, i) => {
+    const hl = h.toLowerCase();
+    if (hl === 'study site' || hl === 'site no') colSite = i;
+    if (hl.includes('a = new') || hl.includes('new activation')) colAR = i;
+    // "Phase 3 Activation/Re-Activation date (activated in IRT for PH3 enrollment)..."
+    if (/phase\s*3\s*activation.*re-?activation\s*date/i.test(h)) colActDate = i;
+  });
+  // Fallback: if the header match failed, use column W (index 22) directly.
+  if (colActDate === -1 && headers.length > 22) colActDate = 22;
+
+  const map = {};
+  const actDates = {};
+  for (let r = headerIdx + 1; r < raw.length; r++) {
+    const row = raw[r]||[];
+    const sn = String(row[colSite]||'').trim();
+    if (!sn) continue;
+    if (colAR !== -1) map[sn] = String(row[colAR]||'').trim().toUpperCase();
+    if (colActDate !== -1 && row[colActDate] != null && String(row[colActDate]).trim() !== '') {
+      actDates[sn] = row[colActDate];
+    }
+  }
+
+  return { map, actDates, sheetName, actDateCol: colActDate };
+}
+
+/* ─── Escalation Logic ─── */
+/* Zones:
+   - Complete     -> actual date exists
+   - TBD          -> no planned date
+   - Action Zone  -> planned date is overdue by 1+ days
+   - Watch Zone   -> planned date is today through +watchDays days
+   - On Track     -> planned date is more than watchDays days away
+*/
+function getEscalation(actualVal, plannedVal, today, watchDays) {
+  const actual = toDate(actualVal);
+  const planned = toDate(plannedVal);
+  if (actual) return { zone: 'Complete', date: actual, actual, planned };
+  if (!planned) return { zone: 'TBD', date: null, actual: null, planned: null };
+  const daysOut = daysBetween(today, planned);
+  if (daysOut < 0) return { zone: 'Action Zone', date: planned, actual: null, planned };
+  if (daysOut <= watchDays) return { zone: 'Watch Zone', date: planned, actual: null, planned };
+  return { zone: 'On Track', date: planned, actual: null, planned };
+}
+
+/* ─── Apply escalation cell style ─── */
+function applyEscStyle(cell, zone) {
+  const s = zone === 'Complete'    ? STYLES.complete
+          : zone === 'On Track'    ? STYLES.onTrack
+          : zone === 'Action Zone' ? STYLES.actionZone
+          : zone === 'Watch Zone'  ? STYLES.watchZone
+          : STYLES.tbd;
+  cell.fill = s.fill; cell.font = s.font;
+  cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  cell.border = STYLES.border;
+}
+
+/* ─── Build Report ─── */
+async function buildReport() {
+  const vDiv = document.getElementById('validation');
+  vDiv.style.display = 'block'; vDiv.innerHTML = '';
+  const log = (msg, cls) => { const d = document.createElement('div'); d.className = 'v-item ' + cls; d.textContent = msg; vDiv.appendChild(d); };
+  const status = document.getElementById('status');
+  status.textContent = 'Building...';
+
+  try {
+    const ssu = parseSSU(STATE.ssu);
+    log(`SSU Horizon: ${ssu.sites.length} sites from "${ssu.sheetName}"`, 'v-info');
+
+    let react = { map: {}, actDates: {} };
+    if (STATE.react) {
+      react = parseReact(STATE.react);
+      log(`Re-activation Tracker: ${Object.keys(react.map).length} sites from "${react.sheetName}"`, 'v-info');
+      log(`Activation dates parsed: ${Object.keys(react.actDates).length} sites (col index ${react.actDateCol}, W=22)`, 'v-info');
+    } else { log('Re-activation Tracker not provided — Site Type defaults to N/A', 'v-warn'); }
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const watchDays = parseInt(document.getElementById('watchWeeks').value) * 7;
+    const filterMode = document.getElementById('filterMode').value;
+
+    const rows = [];
+    let filtered = 0, noRegion = 0, suspiciousDates = 0;
+
+    for (const s of ssu.sites) {
+      if (filterMode === 'preact') {
+        if (toDate(s.aad) || toDate(s.reactA)) { filtered++; continue; }
+      }
+
+      const pickActual = (a, b) => toDate(a) ? a : toDate(b) ? b : null;
+      const pickPlanned = (a, b) => toDate(a) ? a : toDate(b) ? b : null;
+
+      const irbSub = getEscalation(pickActual(s.siteIrbSubA, s.countryIrbSubA), pickPlanned(s.siteIrbSubP, s.countryIrbSubP), today, watchDays);
+      const irbAppr = getEscalation(pickActual(s.siteIrbApprA, s.countryIrbApprA), pickPlanned(s.siteIrbApprP, s.countryIrbApprP), today, watchDays);
+      const contract = getEscalation(s.contractA, s.contractP, today, watchDays);
+      const siv = getEscalation(s.sivA, s.sivSched, today, watchDays);
+
+      // Column D / SSU Processed col S: prefer Reactivation Tracker's Phase 3 activation
+      // date; fall back to SSU's Re-activation BASELINE planned date; else N/A.
+      const reactTrkDate = toDate(react.actDates[s.siteNo]);
+      const reactBLDate = toDate(s.reactBL);
+      const reactPlanned = reactTrkDate ? fmtDate(reactTrkDate)
+                         : reactBLDate  ? fmtDate(reactBLDate)
+                         : 'N/A';
+
+      const ar = react.map[s.siteNo] || '';
+      const siteType = ar === 'A' ? 'A' : ar === 'R' ? 'R' : 'N/A';
+
+      let region = REGION_MAP[s.country] || '';
+      if (!region) {
+        for (const [k, v] of Object.entries(REGION_MAP)) { if (k.toLowerCase() === s.country.toLowerCase()) { region = v; break; } }
+        if (!region) { noRegion++; region = 'UNKNOWN'; }
+      }
+
+      const comment = (s.fsaComment || s.fsaGuidance || '').replace(/\r\n/g, '\n');
+      const allDates = [irbSub.date, irbAppr.date, contract.date, siv.date].filter(Boolean);
+      for (const d of allDates) { if (d.getFullYear() < 2024) { suspiciousDates++; break; } }
+
+      rows.push({ siteNo: s.siteNo, country: s.country, institution: s.institution,
+        iconStudyId: s.iconStudyId, protocolId: s.protocolId, pi: s.pi,
+        horizonStatus: s.horizonStatus, activateStatus: s.activateStatus,
+        dateSelected: s.dateSelected, pad: s.pad,
+        reactPlanned, reactBL: s.reactBL,
+        irbSub, irbAppr, contract, siv, region, siteType, comment });
+    }
+
+    if (filtered) log(`Filtered out ${filtered} activated sites`, 'v-info');
+    if (noRegion) log(`⚠ ${noRegion} sites with unmapped country→region`, 'v-warn');
+    if (suspiciousDates) log(`⚠ ${suspiciousDates} sites with dates before 2024`, 'v-warn');
+    log(`Output: ${rows.length} sites`, 'v-ok');
+    status.textContent = 'Generating styled Excel...';
+
+    /* ═══════════════════════════════════════════════
+       Excel Output with ExcelJS (styled)
+       ═══════════════════════════════════════════════ */
+    const ewb = new ExcelJS.Workbook();
+    ewb.creator = 'SiteNav Builder v1.1';
+
+    const ews = ewb.addWorksheet('Weekly Report', {
+      views: [{ state: 'frozen', xSplit: 4, ySplit: 5 }],
+    });
+
+    const OUT_HEADERS = [
+      'Site No', 'Country', 'Institution',
+      'Phase III CTPv5.0 Re-activation planned date_SSU',
+      'IRB Submission Escalation and Watch Zone Sites',
+      'IRB Approval Escalation and Watch Zone Sites',
+      'Contract Executed Escalation and Watch Zone Sites',
+      'SIV Escalation and Watch Zone',
+      'Initial IRB/EC Submission Planned/Actual Date',
+      'Initial IRB/EC Approval Planned/Actual Date',
+      'SIV scheduled date',
+      'Contract Executed Planned Date',
+      'Region', 'Site Type', 'SSU Overview Comment',
+    ];
+    const COL_W = [9, 17, 40, 22, 49, 47, 53, 30, 40, 38, 20, 34, 10, 10, 86];
+    COL_W.forEach((w, i) => { ews.getColumn(i + 1).width = w; });
+
+    // ── Title rows ──
+    const dateStr = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const srcName = STATE.ssuName.replace(/\.xlsx?$/i, '');
+
+    const r1 = ews.addRow(['BNT327-06 Site Activation Monitoring Report']);
+    r1.getCell(1).font = STYLES.titleFont; r1.getCell(1).fill = STYLES.headerFill;
+    ews.mergeCells(1, 1, 1, 15); r1.height = 30;
+
+    const r2 = ews.addRow([`Last Updated: ${dateStr}`]);
+    r2.getCell(1).font = STYLES.subtitleFont;
+
+    const r3 = ews.addRow([`Source: ${srcName}`]);
+    r3.getCell(1).font = STYLES.subtitleFont;
+
+    ews.addRow([]); // blank row 4
+
+    // ── Header row (row 5) ──
+    const hRow = ews.addRow(OUT_HEADERS);
+    hRow.height = 40;
+    hRow.eachCell((cell, cn) => {
+      cell.fill = STYLES.headerFill;
+      cell.font = cn <= 4 ? STYLES.headerFontSmall : STYLES.headerFont;
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = STYLES.border;
+    });
+
+    // Auto-filter
+    ews.autoFilter = { from: { row: 5, column: 1 }, to: { row: 5, column: 15 } };
+
+    // ── Data rows ──
+    const escCounts = { Complete: 0, 'On Track': 0, 'Watch Zone': 0, 'Action Zone': 0, TBD: 0 };
+
+    for (const r of rows) {
+      const dr = ews.addRow([
+        r.siteNo, r.country, r.institution, r.reactPlanned,
+        r.irbSub.zone, r.irbAppr.zone, r.contract.zone, r.siv.zone,
+        fmtDate(r.irbSub.date), fmtDate(r.irbAppr.date),
+        fmtDate(r.siv.date), fmtDate(r.contract.date),
+        r.region, r.siteType, r.comment,
+      ]);
+
+      // Base data cell styles
+      dr.eachCell({ includeEmpty: true }, (cell, cn) => {
+        cell.font = STYLES.dataFont;
+        cell.border = STYLES.border;
+        cell.alignment = { vertical: 'middle', wrapText: cn === 15 };
+        if ([1,2,3,4,9,10,11,12,13,14].includes(cn)) cell.alignment = { ...cell.alignment, horizontal: 'center' };
+      });
+
+      // Escalation zone styling (cols 5-8)
+      for (const c of [5, 6, 7, 8]) {
+        const zone = dr.getCell(c).value;
+        applyEscStyle(dr.getCell(c), zone);
+        escCounts[zone] = (escCounts[zone] || 0) + 1;
+      }
+    }
+
+    // ── Validation sheet ──
+    const vws = ewb.addWorksheet('Validation');
+    vws.getColumn(1).width = 30; vws.getColumn(2).width = 20;
+    vws.addRow(['Validation Report', `Generated: ${new Date().toISOString()}`]).getCell(1).font = { bold: true, size: 14 };
+    vws.addRow([]);
+    const vh = vws.addRow(['Metric', 'Value']); vh.getCell(1).font = { bold: true }; vh.getCell(2).font = { bold: true };
+    vws.addRow(['SSU sites parsed', ssu.sites.length]);
+    vws.addRow(['Sites in output', rows.length]);
+    vws.addRow(['Sites filtered (activated)', filtered]);
+    vws.addRow(['Unmapped regions', noRegion]);
+    vws.addRow(['Suspicious dates (<2024)', suspiciousDates]);
+    vws.addRow([]);
+    vws.addRow(['Escalation Zone Summary']).getCell(1).font = { bold: true };
+    for (const [k, v] of Object.entries(escCounts)) { if (v > 0) vws.addRow([k, v]); }
+
+    // ═══ Helper: style a header row on a sheet ═══
+    function styleSheetHeader(sheet, headerRow, colWidths) {
+      headerRow.height = 30;
+      headerRow.eachCell((cell) => {
+        cell.fill = STYLES.headerFill;
+        cell.font = STYLES.headerFont;
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = STYLES.border;
+      });
+      colWidths.forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
+    }
+
+    // ═══ Tab: SSU Processed ═══
+    const ssuSheet = ewb.addWorksheet('SSU Processed', {
+      views: [{ state: 'frozen', xSplit: 6, ySplit: 6 }],
+    });
+    const ssuProcHeaders = [
+      'ICON Study ID', 'Protocol ID', 'Site: Horizon Status', 'Site: Activate Status',
+      'Country', 'Site No', 'PI Name', 'Institution', 'Date Selected',
+      'Contract Planned', 'Contract Actual', 'SIV Scheduled', 'SIV Actual',
+      'Phase III CTPv5.0 IRB submission planned date', 'Phase III CTPv5.0 IRB submission actual date',
+      'Phase III CTPv5.0 IRB approval planned date', 'Phase III CTPv5.0 IRB approval actual date',
+      'Phase III CTPv5.0 Re-activation planned date', 'Site Type',
+    ];
+    const ssuProcWidths = [14, 12, 20, 16, 14, 9, 20, 40, 14, 14, 14, 14, 14, 22, 22, 22, 22, 22, 10];
+
+    // Title rows
+    const sp1 = ssuSheet.addRow(['BNT327-06 SSU Report Horizon for Phase III Activation Planned Sites']);
+    sp1.getCell(1).font = STYLES.titleFont; sp1.getCell(1).fill = STYLES.headerFill;
+    ssuSheet.mergeCells(1, 1, 1, 19); sp1.height = 30;
+    const sp2 = ssuSheet.addRow([`Last Updated: ${dateStr}`]); sp2.getCell(1).font = STYLES.subtitleFont;
+    const sp3 = ssuSheet.addRow([`Source: ${srcName}`]); sp3.getCell(1).font = STYLES.subtitleFont;
+    ssuSheet.addRow([]); ssuSheet.addRow([]);
+
+    const spH = ssuSheet.addRow(ssuProcHeaders);
+    styleSheetHeader(ssuSheet, spH, ssuProcWidths);
+    ssuSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: 6, column: 19 } };
+
+    // Data: pre-activation rows only (same as Weekly Report)
+    for (const r of rows) {
+      // Find the original site data for raw dates
+      const orig = ssu.sites.find(s => s.siteNo === r.siteNo);
+      const dr = ssuSheet.addRow([
+        r.iconStudyId, r.protocolId, r.horizonStatus, r.activateStatus,
+        r.country, r.siteNo, r.pi, r.institution, fmtDate(toDate(r.dateSelected)),
+        fmtDate(toDate(orig?.contractP)), fmtDate(toDate(orig?.contractA)),
+        fmtDate(toDate(orig?.sivSched)), fmtDate(toDate(orig?.sivA)),
+        fmtDate(r.irbSub.planned),
+        fmtDate(r.irbSub.actual),
+        fmtDate(r.irbAppr.planned),
+        fmtDate(r.irbAppr.actual),
+        r.reactPlanned, r.siteType,
+      ]);
+      dr.eachCell({ includeEmpty: true }, (cell) => {
+        cell.font = STYLES.dataFont; cell.border = STYLES.border;
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+    }
+    log(`SSU Processed tab: ${rows.length} rows`, 'v-info');
+
+    // ═══ Tab: New Site List ═══
+    const slSheet = ewb.addWorksheet('New Site List', {
+      views: [{ state: 'frozen', xSplit: 6, ySplit: 2 }],
+    });
+    const slHeaders = [
+      'ICON Study ID', 'Protocol ID', 'Site: Horizon Status', 'Site: Activate Status',
+      'Country', 'Site No', 'PI Name', 'Institution', 'Date Selected',
+      'Phase III CTPv5.0 Re-activation BASELINE planned date',
+      'Reactivation Tracker Date',
+      'Phase III CTPv5.0 PAD',
+      'Phase III CTPv5.0 PAD + Activation Date in Reactivation Tracker',
+    ];
+    const slWidths = [14, 12, 20, 16, 14, 9, 20, 40, 14, 28, 22, 22, 32];
+
+    slSheet.addRow([]); // blank row 1
+    const slH = slSheet.addRow(slHeaders);
+    styleSheetHeader(slSheet, slH, slWidths);
+    slSheet.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
+
+    // All sites (not filtered)
+    for (const s of ssu.sites) {
+      const reactBLDate = toDate(s.reactBL);        // K: baseline planned date from SSU
+      const reactTrkDate = toDate(react.actDates[s.siteNo]); // L: Phase 3 activation date from tracker
+
+      // M: PAD = if baseline date is a real date, show it
+      const pad = reactBLDate ? fmtDate(reactBLDate) : '';
+      // N: PAD + Reactivation = prefer tracker date, fallback to baseline
+      const padPlusReact = reactTrkDate ? fmtDate(reactTrkDate) : reactBLDate ? fmtDate(reactBLDate) : '';
+
+      const dr = slSheet.addRow([
+        s.iconStudyId, s.protocolId, s.horizonStatus, s.activateStatus,
+        s.country, s.siteNo, s.pi, s.institution, fmtDate(toDate(s.dateSelected)),
+        fmtDate(reactBLDate), fmtDate(reactTrkDate), pad, padPlusReact,
+      ]);
+      dr.eachCell({ includeEmpty: true }, (cell) => {
+        cell.font = STYLES.dataFont; cell.border = STYLES.border;
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+    }
+    log(`New Site List tab: ${ssu.sites.length} rows`, 'v-info');
+
+    // ═══ Tab: SSU Document (raw copy) ═══
+    const docSheet = ewb.addWorksheet('SSU Document', {
+      views: [{ state: 'frozen', xSplit: 6, ySplit: 1 }],
+    });
+
+    // Use raw headers from SSU
+    const docH = docSheet.addRow(ssu.rawHeaders);
+    docH.height = 30;
+    docH.eachCell((cell) => {
+      cell.fill = STYLES.headerFill;
+      cell.font = STYLES.headerFont;
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = STYLES.border;
+    });
+    // Set reasonable widths for raw columns
+    ssu.rawHeaders.forEach((h, i) => {
+      const len = String(h||'').length;
+      docSheet.getColumn(i + 1).width = Math.max(12, Math.min(len + 4, 40));
+    });
+    docSheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ssu.rawHeaders.length } };
+
+    // Raw data rows
+    for (const rawRow of ssu.rawData) {
+      const dr = docSheet.addRow(rawRow.map(c => c == null ? '' : c));
+      dr.eachCell({ includeEmpty: true }, (cell) => {
+        cell.font = STYLES.dataFont; cell.border = STYLES.border;
+        cell.alignment = { vertical: 'middle' };
+      });
+    }
+    log(`SSU Document tab: ${ssu.rawData.length} rows (raw copy)`, 'v-info');
+
+    // ── Download ──
+    const buf = await ewb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `BNT327-06_SiteNav_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    log('✓ File downloaded successfully', 'v-ok');
+    status.textContent = 'Done!';
+  } catch (err) {
+    log(`ERROR: ${err.message}`, 'v-error');
+    status.textContent = 'Build failed';
+    console.error(err);
+  }
+}
+</script>
+</body>
+</html>
